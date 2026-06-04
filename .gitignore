@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*__pycache__/
+*.pyc
+*.pyo
+
+# Training outputs
+runs/
+logs/
+wandb/
+
+# Model weights and exports
+*.pt
+*.pth
+*.onnx
+*.engine
+*.torchscript
+*.tflite
+*.mlpackage
+
+# Datasets and large archives
+Dataset*/
+dataset*/
+DIOR*/
+NWPU*/
+*.zip
+*.rar
+*.7z
+*.tar
+*.gz
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
