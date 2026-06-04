@@ -6,6 +6,11 @@ from pathlib import Path
 DATASET_NAME = "DIOR"
 AUX_EXPERIMENT = "exp2_sum"  # off, head_only, exp1_mean, exp1_sum, exp2_mean, exp2_sum
 AUX_LAYERS = "all"  # all, b1, b2, b3, b4, b5, or comma-separated like b1,b3,b5
+EPOCHS = int(os.getenv("YOLO_EPOCHS", 30))
+IMG_SIZE = int(os.getenv("YOLO_IMGSZ", 640))
+BATCH = int(os.getenv("YOLO_BATCH", 4))
+WORKERS = int(os.getenv("YOLO_WORKERS", 4))
+CACHE = os.getenv("YOLO_CACHE", "disk")
 
 CLOUD_DATA_YAML = Path("/workspace/datasets/DIOR_YOLO/data.yaml")
 if CLOUD_DATA_YAML.exists():
@@ -30,11 +35,12 @@ def main():
 
     results = model.train(
         data=DATA_YAML,
-        epochs=30,
-        imgsz=640,
-        batch=4,
+        epochs=EPOCHS,
+        imgsz=IMG_SIZE,
+        batch=BATCH,
         device=0,       
-        workers=0,      
+        workers=WORKERS,
+        cache=CACHE,
         amp=True,
         project=RUN_PROJECT,
         name=run_name,
