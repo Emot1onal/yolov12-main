@@ -1,12 +1,19 @@
 from ultralytics import YOLO
 import os
 import torch
+from pathlib import Path
 
-DATA_YAML = r"C:\Users\14288\OneDrive\Desktop\DIOR_YOLO\data.yaml"
 DATASET_NAME = "DIOR"
 AUX_EXPERIMENT = "exp2_sum"  # off, head_only, exp1_mean, exp1_sum, exp2_mean, exp2_sum
 AUX_LAYERS = "all"  # all, b1, b2, b3, b4, b5, or comma-separated like b1,b3,b5
-RUN_PROJECT = r"C:\Users\14288\OneDrive\Desktop\yolov12\runs\detect_DIOR"
+
+CLOUD_DATA_YAML = Path("/workspace/datasets/DIOR_YOLO/data.yaml")
+if CLOUD_DATA_YAML.exists():
+    DATA_YAML = str(CLOUD_DATA_YAML)
+    RUN_PROJECT = "/workspace/runs/detect_DIOR"
+else:
+    DATA_YAML = r"C:\Users\14288\OneDrive\Desktop\DIOR_YOLO\data.yaml"
+    RUN_PROJECT = r"C:\Users\14288\OneDrive\Desktop\yolov12\runs\detect_DIOR"
 
 def main():
     os.environ.setdefault("YOLO_AUX_EXPERIMENT", AUX_EXPERIMENT)
