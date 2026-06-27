@@ -1,6 +1,7 @@
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 """Block modules."""
 
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -1161,6 +1162,16 @@ import logging
 logger = logging.getLogger(__name__)
 
 USE_FLASH_ATTN = False
+_FLASH_ATTN_WARNING_SHOWN = False
+
+
+def _flash_attn_warning():
+    global _FLASH_ATTN_WARNING_SHOWN
+    if os.getenv("YOLO_FLASH_ATTN_WARN", "0") == "1" and not _FLASH_ATTN_WARNING_SHOWN:
+        logger.warning("FlashAttention is not available on this device. Using scaled_dot_product_attention instead.")
+        _FLASH_ATTN_WARNING_SHOWN = True
+
+
 try:
     import torch
     if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8:  # Ampere or newer
@@ -1168,10 +1179,10 @@ try:
         USE_FLASH_ATTN = True
     else:
         from torch.nn.functional import scaled_dot_product_attention as sdpa
-        logger.warning("FlashAttention is not available on this device. Using scaled_dot_product_attention instead.")
+        _flash_attn_warning()
 except Exception:
     from torch.nn.functional import scaled_dot_product_attention as sdpa
-    logger.warning("FlashAttention is not available on this device. Using scaled_dot_product_attention instead.")
+    _flash_attn_warning()
 
 class AAttn(nn.Module):
     """
