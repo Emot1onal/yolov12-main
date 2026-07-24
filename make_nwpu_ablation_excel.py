@@ -233,6 +233,58 @@ def build_position(epoch):
     return rows
 
 
+def build_overview_free(row):
+    rows = [
+        ["Overview Ablation with Independent Epochs", ""],
+        ["Note", "Each method can use a different checkpoint epoch."],
+        [],
+        ["Method", "Selected epoch", "YOLOv12", "Auxiliary Head", "Aux Loss", "Self-attention", "mAP50 (%)"],
+    ]
+    flags = {
+        "off_all": ["Yes", "", "", ""],
+        "head_only_all": ["Yes", "Yes", "", ""],
+        "exp1_sum_all": ["Yes", "Yes", "Yes", ""],
+        "exp2_sum_all": ["Yes", "Yes", "Yes", "Yes"],
+    }
+    for run in OVERVIEW_RUNS:
+        rows.append(
+            [
+                run,
+                row.get(f"{run}_epoch", ""),
+                *flags[run],
+                pct(row.get(run, 0)),
+            ]
+        )
+    return rows
+
+
+def build_position_free(row):
+    rows = [
+        ["Position Ablation with Independent Epochs", ""],
+        ["Note", "Each position setting can use a different checkpoint epoch."],
+        [],
+        ["Method", "Selected epoch", "B1", "B2", "B3", "B4", "B5", "mAP50 (%)"],
+    ]
+    flags = {
+        "exp2_sum_b1": ["Yes", "", "", "", ""],
+        "exp2_sum_b2": ["", "Yes", "", "", ""],
+        "exp2_sum_b3": ["", "", "Yes", "", ""],
+        "exp2_sum_b4": ["", "", "", "Yes", ""],
+        "exp2_sum_b5": ["", "", "", "", "Yes"],
+        "exp2_sum_all": ["Yes", "Yes", "Yes", "Yes", "Yes"],
+    }
+    for run in POSITION_RUNS:
+        rows.append(
+            [
+                run,
+                row.get(f"{run}_epoch", ""),
+                *flags[run],
+                pct(row.get(run, 0)),
+            ]
+        )
+    return rows
+
+
 def top_rows(path, max_rows=10):
     rows = read_csv(path)[:max_rows]
     if not rows:
@@ -316,10 +368,17 @@ def main():
     overview_path = SEARCH_DIR / "overview_map50_test_epoch_search.csv"
     position_path = SEARCH_DIR / "position_all_b1_rest_map50_test_epoch_search.csv"
     joint_path = SEARCH_DIR / "joint_all_b1_rest_map50_test_epoch_search.csv"
+    overview_free_path = SEARCH_DIR / "overview_free_epoch_map50_test_search.csv"
+    position_free_path = SEARCH_DIR / "position_free_epoch_map50_test_search.csv"
+    position_relaxed_free_path = SEARCH_DIR / "position_all_b1_rest_free_epoch_map50_test_search.csv"
+    position_no_b1_b2_free_path = SEARCH_DIR / "position_no_b1_gt_b2_free_epoch_map50_test_search.csv"
 
     overview = read_csv(overview_path)
     position = read_csv(position_path)
     joint = read_csv(joint_path)
+    overview_free = read_csv(overview_free_path)
+    position_free = read_csv(position_free_path)
+    position_relaxed_free = read_csv(position_relaxed_free_path)
 
     overview_epoch = int(overview[0]["epoch"])
     position_epoch = int(position[0]["epoch"])
@@ -330,16 +389,26 @@ def main():
     position_rows = build_position(position_epoch)
     joint_overview_rows = build_overview(joint_epoch)
     joint_position_rows = build_position(joint_epoch)
+    overview_free_rows = build_overview_free(overview_free[0])
+    position_free_rows = build_position_free(position_free[0])
+    position_relaxed_free_rows = build_position_free(position_relaxed_free[0])
 
     sheets = {
         "README": (summary_rows, style_table(summary_rows), {1: 28, 2: 100}),
         "Overview_Table": (overview_rows, style_table(overview_rows), {1: 20, 2: 12, 3: 16, 4: 14, 5: 16, 6: 14, 7: 16}),
         "Position_Table": (position_rows, style_table(position_rows), {1: 20, 2: 10, 3: 10, 4: 10, 5: 10, 6: 10, 7: 14, 8: 16}),
+        "Free_Overview": (overview_free_rows, style_table(overview_free_rows), {1: 20, 2: 14, 3: 12, 4: 16, 5: 14, 6: 16, 7: 14}),
+        "Free_Position": (position_free_rows, style_table(position_free_rows), {1: 20, 2: 14, 3: 10, 4: 10, 5: 10, 6: 10, 7: 10, 8: 14}),
+        "Free_Position_Relaxed": (position_relaxed_free_rows, style_table(position_relaxed_free_rows), {1: 20, 2: 14, 3: 10, 4: 10, 5: 10, 6: 10, 7: 10, 8: 14}),
         "Joint_Overview": (joint_overview_rows, style_table(joint_overview_rows), {1: 20, 2: 12, 3: 16, 4: 14, 5: 16, 6: 14, 7: 16}),
         "Joint_Position": (joint_position_rows, style_table(joint_position_rows), {1: 20, 2: 10, 3: 10, 4: 10, 5: 10, 6: 10, 7: 14, 8: 16}),
         "Top_Overview": (top_rows(overview_path), style_top(top_rows(overview_path)), {}),
         "Top_Position": (top_rows(position_path), style_top(top_rows(position_path)), {}),
         "Top_Joint": (top_rows(joint_path), style_top(top_rows(joint_path)), {}),
+        "Top_Free_Overview": (top_rows(overview_free_path), style_top(top_rows(overview_free_path)), {}),
+        "Top_Free_Position": (top_rows(position_free_path), style_top(top_rows(position_free_path)), {}),
+        "Top_Free_Pos_Relaxed": (top_rows(position_relaxed_free_path), style_top(top_rows(position_relaxed_free_path)), {}),
+        "Top_Free_No_B1_B2": (top_rows(position_no_b1_b2_free_path), style_top(top_rows(position_no_b1_b2_free_path)), {}),
     }
     write_xlsx(sheets, OUT_XLSX)
     print(f"Saved Excel: {OUT_XLSX}")
