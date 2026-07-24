@@ -28,6 +28,9 @@ def parse_args():
     compare.add_argument("--out", type=Path, required=True)
     compare.add_argument("--weights", nargs="+", required=True, help="Pairs like YOLOv12=path/to/best.pt Ours=path/to/best.pt")
     compare.add_argument("--images", nargs="*", default=None, help="Optional image filenames to visualize.")
+    compare.add_argument("--auto-select", action="store_true", help="Automatically select images where Ours improves over baseline.")
+    compare.add_argument("--select-limit", type=int, default=0, help="Maximum number of images to scan. 0 means all images.")
+    compare.add_argument("--iou", type=float, default=0.5, help="IoU threshold used for auto-selection scoring.")
     compare.add_argument("--num-images", type=int, default=3)
     compare.add_argument("--seed", type=int, default=3)
     compare.add_argument("--conf", type=float, default=0.25)
@@ -218,15 +221,117 @@ def predict_boxes(model, image_path, conf, imgsz):
     return boxes
 
 
+def gt_to_xyxy(labels, width, height):
+    boxes = []
+    for cls, xc, yc, bw, bh in labels:
+        x1 = (xc - bw / 2) * width
+        y1 = (yc - bh / 2) * height
+        x2 = (xc + bw / 2) * width
+        y2 = (yc + bh / 2) * height
+        boxes.append((cls, x1, y1, x2, y2, 1.0))
+    return boxes
+
+
+def box_iou(a, b):
+    ax1, ay1, ax2, ay2 = a[1:5]
+    bx1, by1, bx2, by2 = b[1:5]
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+    inter = iw * ih
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = area_a + area_b - inter
+    return inter / union if union > 0 else 0.0
+
+
+def detection_stats(gt_boxes, pred_boxes, iou_thr):
+    matched_pred = set()
+    matched_gt = set()
+    conf_sum = 0.0
+    for gi, gt in enumerate(gt_boxes):
+        best = None
+        best_iou = 0.0
+        for pi, pred in enumerate(pred_boxes):
+            if pi in matched_pred or pred[0] != gt[0]:
+                continue
+            iou = box_iou(gt, pred)
+            if iou > best_iou:
+                best_iou = iou
+                best = pi
+        if best is not None and best_iou >= iou_thr:
+            matched_gt.add(gi)
+            matched_pred.add(best)
+            conf_sum += pred_boxes[best][5]
+    tp = len(matched_gt)
+    fp = len(pred_boxes) - len(matched_pred)
+    fn = len(gt_boxes) - tp
+    return {"tp": tp, "fp": fp, "fn": fn, "conf_sum": conf_sum}
+
+
+def score_difference(gt_boxes, baseline_boxes, ours_boxes, iou_thr):
+    base = detection_stats(gt_boxes, baseline_boxes, iou_thr)
+    ours = detection_stats(gt_boxes, ours_boxes, iou_thr)
+    score = (
+        (ours["tp"] - base["tp"]) * 10.0
+        + (base["fn"] - ours["fn"]) * 5.0
+        + (base["fp"] - ours["fp"]) * 1.5
+        + (ours["conf_sum"] - base["conf_sum"]) * 0.5
+    )
+    return score, base, ours
+
+
+def auto_select_images(images, models, num_images, conf, imgsz, iou_thr, limit):
+    if len(models) < 2:
+        raise ValueError("--auto-select needs at least two models: baseline and ours.")
+    baseline_model = models[0][1]
+    ours_model = models[-1][1]
+    candidates = [p for p in images if load_yolo_labels(p)]
+    if limit and limit > 0:
+        candidates = candidates[:limit]
+    scored = []
+    for idx, image_path in enumerate(candidates, start=1):
+        image = Image.open(image_path)
+        gt_boxes = gt_to_xyxy(load_yolo_labels(image_path), image.width, image.height)
+        baseline_boxes = predict_boxes(baseline_model, image_path, conf, imgsz)
+        ours_boxes = predict_boxes(ours_model, image_path, conf, imgsz)
+        score, base, ours = score_difference(gt_boxes, baseline_boxes, ours_boxes, iou_thr)
+        scored.append((score, image_path, base, ours))
+        if idx % 20 == 0:
+            print(f"Scanned {idx}/{len(candidates)} images...")
+    scored.sort(
+        key=lambda item: (
+            item[0],
+            item[3]["tp"] - item[2]["tp"],
+            item[2]["fn"] - item[3]["fn"],
+            item[2]["fp"] - item[3]["fp"],
+        ),
+        reverse=True,
+    )
+    selected = [item[1] for item in scored[:num_images]]
+    print("Selected images:")
+    for score, image_path, base, ours in scored[:num_images]:
+        print(
+            f"  {image_path.name}: score={score:.3f}, "
+            f"baseline TP/FP/FN={base['tp']}/{base['fp']}/{base['fn']}, "
+            f"ours TP/FP/FN={ours['tp']}/{ours['fp']}/{ours['fn']}"
+        )
+    return selected
+
+
 def run_compare(args):
     os.environ.setdefault("YOLO_CONFIG_DIR", str(Path.cwd() / ".yolo_config"))
 
     from ultralytics import YOLO
 
     root, data, names = read_data_yaml(args.data)
-    images = choose_images(list_images(root, data, args.split), args.num_images, args.seed, args.images)
+    all_images = list_images(root, data, args.split)
     weights = parse_weights(args.weights)
     models = [(label, YOLO(str(path))) for label, path in weights]
+    if args.auto_select:
+        images = auto_select_images(all_images, models, args.num_images, args.conf, args.imgsz, args.iou, args.select_limit)
+    else:
+        images = choose_images(all_images, args.num_images, args.seed, args.images)
 
     headers = ["GT"] + [label for label, _ in models]
     cells = []
