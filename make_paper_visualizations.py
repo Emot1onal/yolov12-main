@@ -21,6 +21,9 @@ def parse_args():
     samples.add_argument("--rows", type=int, default=3)
     samples.add_argument("--seed", type=int, default=7)
     samples.add_argument("--image-size", type=int, default=220)
+    samples.add_argument("--cell-width", type=int, default=None)
+    samples.add_argument("--cell-height", type=int, default=None)
+    samples.add_argument("--fit", action="store_true", help="Fit the full image into each cell instead of center-cropping.")
 
     compare = sub.add_parser("compare", help="Compare GT and model predictions in a grid.")
     compare.add_argument("--data", type=Path, required=True)
@@ -36,6 +39,9 @@ def parse_args():
     compare.add_argument("--conf", type=float, default=0.25)
     compare.add_argument("--imgsz", type=int, default=640)
     compare.add_argument("--image-size", type=int, default=260)
+    compare.add_argument("--cell-width", type=int, default=None)
+    compare.add_argument("--cell-height", type=int, default=None)
+    compare.add_argument("--fit", action="store_true", help="Fit the full image into each cell instead of center-cropping.")
 
     return parser.parse_args()
 
@@ -139,33 +145,54 @@ def draw_boxes(image, boxes, names, normalized=True, score=False):
     return im
 
 
+def cell_size_from_args(args):
+    width = args.cell_width or args.image_size
+    height = args.cell_height or args.image_size
+    return width, height
+
+
 def resize_crop(image, size):
     image = image.convert("RGB")
-    scale = max(size / image.width, size / image.height)
+    width, height = size
+    scale = max(width / image.width, height / image.height)
     resized = image.resize((round(image.width * scale), round(image.height * scale)), Image.Resampling.LANCZOS)
-    left = max(0, (resized.width - size) // 2)
-    top = max(0, (resized.height - size) // 2)
-    return resized.crop((left, top, left + size, top + size))
+    left = max(0, (resized.width - width) // 2)
+    top = max(0, (resized.height - height) // 2)
+    return resized.crop((left, top, left + width, top + height))
 
 
-def make_grid(cells, rows, cols, cell_size, headers=None, captions=None):
+def resize_fit(image, size):
+    image = image.convert("RGB")
+    width, height = size
+    scale = min(width / image.width, height / image.height)
+    resized = image.resize((round(image.width * scale), round(image.height * scale)), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGB", (width, height), (255, 255, 255))
+    left = (width - resized.width) // 2
+    top = (height - resized.height) // 2
+    canvas.paste(resized, (left, top))
+    return canvas
+
+
+def make_grid(cells, rows, cols, cell_size, headers=None, captions=None, fit=False):
+    cell_w, cell_h = cell_size
     header_h = 32 if headers else 0
     caption_h = 26 if captions else 0
-    canvas = Image.new("RGB", (cols * cell_size, header_h + rows * cell_size + caption_h), (255, 255, 255))
+    canvas = Image.new("RGB", (cols * cell_w, header_h + rows * cell_h + caption_h), (255, 255, 255))
     draw = ImageDraw.Draw(canvas)
     fnt = font(15)
     if headers:
         for c, text in enumerate(headers):
-            x = c * cell_size
+            x = c * cell_w
             draw.text((x + 8, 8), text, fill=(0, 0, 0), font=fnt)
     for idx, cell in enumerate(cells):
         r, c = divmod(idx, cols)
-        canvas.paste(resize_crop(cell, cell_size), (c * cell_size, header_h + r * cell_size))
+        resized = resize_fit(cell, cell_size) if fit else resize_crop(cell, cell_size)
+        canvas.paste(resized, (c * cell_w, header_h + r * cell_h))
     if captions:
-        y = header_h + rows * cell_size + 5
+        y = header_h + rows * cell_h + 5
         for c, text in enumerate(captions):
             bbox = draw.textbbox((0, 0), text, font=fnt)
-            x = c * cell_size + (cell_size - (bbox[2] - bbox[0])) // 2
+            x = c * cell_w + (cell_w - (bbox[2] - bbox[0])) // 2
             draw.text((x, y), text, fill=(0, 0, 0), font=fnt)
     return canvas
 
@@ -191,7 +218,7 @@ def run_samples(args):
     for image_path in images:
         image = Image.open(image_path)
         cells.append(draw_boxes(image, load_yolo_labels(image_path), names, normalized=True))
-    grid = make_grid(cells, args.rows, args.cols, args.image_size)
+    grid = make_grid(cells, args.rows, args.cols, cell_size_from_args(args), fit=args.fit)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     grid.save(args.out)
     print(f"Saved: {args.out}")
@@ -345,7 +372,7 @@ def run_compare(args):
     rows = len(images)
     cols = 1 + len(models)
     captions = [f"({chr(97 + i)})" for i in range(cols)]
-    grid = make_grid(cells, rows, cols, args.image_size, headers=headers, captions=captions)
+    grid = make_grid(cells, rows, cols, cell_size_from_args(args), headers=headers, captions=captions, fit=args.fit)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     grid.save(args.out)
     print(f"Saved: {args.out}")
