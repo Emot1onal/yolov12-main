@@ -32,6 +32,16 @@ def parse_args():
     compare.add_argument("--weights", nargs="+", required=True, help="Pairs like YOLOv12=path/to/best.pt Ours=path/to/best.pt")
     compare.add_argument("--images", nargs="*", default=None, help="Optional image filenames to visualize.")
     compare.add_argument("--auto-select", action="store_true", help="Automatically select images where Ours improves over baseline.")
+    compare.add_argument(
+        "--strict-improve",
+        action="store_true",
+        help="For auto-selection, keep only images where Ours has more TP and no more FP than baseline.",
+    )
+    compare.add_argument(
+        "--visible-more",
+        action="store_true",
+        help="For auto-selection, also require Ours to display at least as many prediction boxes as baseline.",
+    )
     compare.add_argument("--select-limit", type=int, default=0, help="Maximum number of images to scan. 0 means all images.")
     compare.add_argument("--iou", type=float, default=0.5, help="IoU threshold used for auto-selection scoring.")
     compare.add_argument("--num-images", type=int, default=3)
@@ -308,7 +318,7 @@ def score_difference(gt_boxes, baseline_boxes, ours_boxes, iou_thr):
     return score, base, ours
 
 
-def auto_select_images(images, models, num_images, conf, imgsz, iou_thr, limit):
+def auto_select_images(images, models, num_images, conf, imgsz, iou_thr, limit, strict_improve, visible_more):
     if len(models) < 2:
         raise ValueError("--auto-select needs at least two models: baseline and ours.")
     baseline_model = models[0][1]
@@ -323,6 +333,10 @@ def auto_select_images(images, models, num_images, conf, imgsz, iou_thr, limit):
         baseline_boxes = predict_boxes(baseline_model, image_path, conf, imgsz)
         ours_boxes = predict_boxes(ours_model, image_path, conf, imgsz)
         score, base, ours = score_difference(gt_boxes, baseline_boxes, ours_boxes, iou_thr)
+        if strict_improve and not (ours["tp"] > base["tp"] and ours["fp"] <= base["fp"]):
+            continue
+        if visible_more and not (len(ours_boxes) >= len(baseline_boxes)):
+            continue
         scored.append((score, image_path, base, ours))
         if idx % 20 == 0:
             print(f"Scanned {idx}/{len(candidates)} images...")
@@ -336,6 +350,11 @@ def auto_select_images(images, models, num_images, conf, imgsz, iou_thr, limit):
         reverse=True,
     )
     selected = [item[1] for item in scored[:num_images]]
+    if len(selected) < num_images:
+        print(
+            f"WARNING: strict selection found only {len(selected)} images. "
+            "Try lowering --conf or removing --strict-improve if needed."
+        )
     print("Selected images:")
     for score, image_path, base, ours in scored[:num_images]:
         print(
@@ -356,7 +375,17 @@ def run_compare(args):
     weights = parse_weights(args.weights)
     models = [(label, YOLO(str(path))) for label, path in weights]
     if args.auto_select:
-        images = auto_select_images(all_images, models, args.num_images, args.conf, args.imgsz, args.iou, args.select_limit)
+        images = auto_select_images(
+            all_images,
+            models,
+            args.num_images,
+            args.conf,
+            args.imgsz,
+            args.iou,
+            args.select_limit,
+            args.strict_improve,
+            args.visible_more,
+        )
     else:
         images = choose_images(all_images, args.num_images, args.seed, args.images)
 
