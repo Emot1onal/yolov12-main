@@ -59,6 +59,12 @@ def parse_args():
     parser.add_argument("--public-conf", type=float, default=0.35)
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--iou", type=float, default=0.5)
+    parser.add_argument(
+        "--max-gt",
+        type=int,
+        default=25,
+        help="Skip overly dense images whose number of ground-truth boxes is larger than this value. Use 0 to disable.",
+    )
     parser.add_argument("--images", nargs="*", default=None, help="Optional fixed image filenames.")
     parser.add_argument("--no-public", action="store_true", help="Only draw GT, YOLOv12, and HARPNet.")
     parser.add_argument("--skip-yolov8n-dior", action="store_true")
@@ -336,7 +342,7 @@ def score_image(gt_boxes, public_stats, base_stats, ours_stats):
     return score
 
 
-def select_images(all_images, predictors, num_images, seed, scan_limit, iou_thr, fixed_images, imgsz):
+def select_images(all_images, predictors, num_images, seed, scan_limit, iou_thr, fixed_images, imgsz, max_gt):
     if fixed_images:
         by_name = {p.name: p for p in all_images}
         missing = [name for name in fixed_images if name not in by_name]
@@ -344,7 +350,18 @@ def select_images(all_images, predictors, num_images, seed, scan_limit, iou_thr,
             raise FileNotFoundError(f"Images not found: {missing}")
         return [by_name[name] for name in fixed_images]
 
-    candidates = [p for p in all_images if load_yolo_labels(p)]
+    candidates = []
+    skipped_dense = 0
+    for p in all_images:
+        labels = load_yolo_labels(p)
+        if not labels:
+            continue
+        if max_gt and len(labels) > max_gt:
+            skipped_dense += 1
+            continue
+        candidates.append(p)
+    if skipped_dense:
+        print(f"Skipped {skipped_dense} overly dense images with more than {max_gt} GT boxes.")
     random.Random(seed).shuffle(candidates)
     if scan_limit and scan_limit > 0:
         candidates = candidates[:scan_limit]
@@ -494,6 +511,7 @@ def main():
         args.iou,
         args.images,
         args.imgsz,
+        args.max_gt,
     )
     if not selected:
         raise RuntimeError("No suitable images were selected.")
