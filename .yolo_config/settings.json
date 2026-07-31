@@ -1,0 +1,20 @@
+{
+  "settings_version": "0.0.6",
+  "datasets_dir": "C:\\Users\\14288\\OneDrive\\Desktop\\yolov12\\datasets",
+  "weights_dir": "C:\\Users\\14288\\OneDrive\\Desktop\\yolov12\\yolov12-main\\weights",
+  "runs_dir": "C:\\Users\\14288\\OneDrive\\Desktop\\yolov12\\yolov12-main\\runs",
+  "uuid": "c71529fc21e753061e594941c7948c49a3874b3fcd954bc3ffde190236bbfc2c",
+  "sync": true,
+  "api_key": "",
+  "openai_api_key": "",
+  "clearml": true,
+  "comet": true,
+  "dvc": true,
+  "hub": true,
+  "mlflow": true,
+  "neptune": true,
+  "raytune": true,
+  "tensorboard": true,
+  "wandb": false,
+  "vscode_msg": true
+}

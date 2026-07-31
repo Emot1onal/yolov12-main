@@ -197,9 +197,9 @@ class BaseModel(nn.Module):
             x = m(x)
 
             # ===== capture B1-B5 features for auxiliary heatmaps =====
-            active_aux_indices = {
-                self.aux_indices[name] for name in getattr(self, "active_aux_names", self.aux_indices)
-            }
+            aux_indices = getattr(self, "aux_indices", {})
+            active_aux_names = getattr(self, "active_aux_names", aux_indices)
+            active_aux_indices = {aux_indices[name] for name in active_aux_names if name in aux_indices}
             if m.i in active_aux_indices and isinstance(x, torch.Tensor):
                 aux_features[m.i] = x
             # =========================================================
@@ -218,8 +218,10 @@ class BaseModel(nn.Module):
         aux_outputs = None
         if (self.training or getattr(self, "force_aux", False)) and getattr(self, "return_aux", False):
             aux_maps, aux_feats = [], []
-            for name, layer_idx in self.aux_indices.items():
-                if name not in getattr(self, "active_aux_names", self.aux_indices):
+            aux_indices = getattr(self, "aux_indices", {})
+            active_aux_names = getattr(self, "active_aux_names", aux_indices)
+            for name, layer_idx in aux_indices.items():
+                if name not in active_aux_names:
                     continue
                 feat = aux_features.get(layer_idx)
                 if feat is None:
