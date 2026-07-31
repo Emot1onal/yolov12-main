@@ -371,11 +371,7 @@ def select_images(all_images, predictors, num_images, seed, scan_limit, iou_thr,
             continue
         if ours_stats["fp"] > base_stats["fp"] + 2:
             continue
-        if (
-            ours_stats["tp"] == base_stats["tp"]
-            and ours_stats["fp"] >= base_stats["fp"]
-            and ours_stats["count"] <= base_stats["count"]
-        ):
+        if ours_stats["tp"] == base_stats["tp"] and ours_stats["fp"] >= base_stats["fp"]:
             continue
         score = score_image(gt, public_stats, base_stats, ours_stats)
         scored.append((score, image_path, base_stats, ours_stats))
