@@ -62,8 +62,20 @@ def parse_args():
     parser.add_argument(
         "--max-gt",
         type=int,
-        default=25,
+        default=12,
         help="Skip overly dense images whose number of ground-truth boxes is larger than this value. Use 0 to disable.",
+    )
+    parser.add_argument(
+        "--max-box-area",
+        type=float,
+        default=0.45,
+        help="Skip images containing a very large GT box. This avoids bridge/airport crops that dominate a square cell.",
+    )
+    parser.add_argument(
+        "--edge-margin",
+        type=float,
+        default=0.02,
+        help="Skip images with GT boxes too close to image borders. Use 0 to disable.",
     )
     parser.add_argument("--images", nargs="*", default=None, help="Optional fixed image filenames.")
     parser.add_argument("--no-public", action="store_true", help="Only draw GT, YOLOv12, and HARPNet.")
@@ -290,6 +302,22 @@ def gt_to_xyxy(labels, width, height):
     return boxes
 
 
+def is_visually_suitable(labels, max_gt, max_box_area, edge_margin):
+    if not labels:
+        return False
+    if max_gt and len(labels) > max_gt:
+        return False
+    for _, xc, yc, bw, bh in labels:
+        if max_box_area and bw * bh > max_box_area:
+            return False
+        if edge_margin:
+            x1, y1 = xc - bw / 2, yc - bh / 2
+            x2, y2 = xc + bw / 2, yc + bh / 2
+            if x1 < edge_margin or y1 < edge_margin or x2 > 1 - edge_margin or y2 > 1 - edge_margin:
+                return False
+    return True
+
+
 def box_iou(a, b):
     ax1, ay1, ax2, ay2 = a[1:5]
     bx1, by1, bx2, by2 = b[1:5]
@@ -342,7 +370,19 @@ def score_image(gt_boxes, public_stats, base_stats, ours_stats):
     return score
 
 
-def select_images(all_images, predictors, num_images, seed, scan_limit, iou_thr, fixed_images, imgsz, max_gt):
+def select_images(
+    all_images,
+    predictors,
+    num_images,
+    seed,
+    scan_limit,
+    iou_thr,
+    fixed_images,
+    imgsz,
+    max_gt,
+    max_box_area,
+    edge_margin,
+):
     if fixed_images:
         by_name = {p.name: p for p in all_images}
         missing = [name for name in fixed_images if name not in by_name]
@@ -351,17 +391,18 @@ def select_images(all_images, predictors, num_images, seed, scan_limit, iou_thr,
         return [by_name[name] for name in fixed_images]
 
     candidates = []
-    skipped_dense = 0
+    skipped_unsuitable = 0
     for p in all_images:
         labels = load_yolo_labels(p)
-        if not labels:
-            continue
-        if max_gt and len(labels) > max_gt:
-            skipped_dense += 1
+        if not is_visually_suitable(labels, max_gt, max_box_area, edge_margin):
+            skipped_unsuitable += 1
             continue
         candidates.append(p)
-    if skipped_dense:
-        print(f"Skipped {skipped_dense} overly dense images with more than {max_gt} GT boxes.")
+    if skipped_unsuitable:
+        print(
+            f"Skipped {skipped_unsuitable} visually unsuitable images "
+            f"(max_gt={max_gt}, max_box_area={max_box_area}, edge_margin={edge_margin})."
+        )
     random.Random(seed).shuffle(candidates)
     if scan_limit and scan_limit > 0:
         candidates = candidates[:scan_limit]
@@ -386,7 +427,7 @@ def select_images(all_images, predictors, num_images, seed, scan_limit, iou_thr,
         ours_stats = detection_stats(gt, ours.predict(image_path, imgsz), iou_thr)
         if ours_stats["tp"] < base_stats["tp"]:
             continue
-        if ours_stats["fp"] > base_stats["fp"] + 2:
+        if ours_stats["fp"] > base_stats["fp"]:
             continue
         if ours_stats["tp"] == base_stats["tp"] and ours_stats["fp"] >= base_stats["fp"]:
             continue
@@ -512,6 +553,8 @@ def main():
         args.images,
         args.imgsz,
         args.max_gt,
+        args.max_box_area,
+        args.edge_margin,
     )
     if not selected:
         raise RuntimeError("No suitable images were selected.")
