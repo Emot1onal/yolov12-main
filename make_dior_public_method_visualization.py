@@ -34,6 +34,30 @@ DIOR_NAMES = [
 ]
 
 
+CLASS_COLORS = [
+    (0, 170, 255),    # airplane
+    (0, 210, 120),    # airport
+    (255, 80, 80),    # baseballfield
+    (0, 200, 210),    # basketballcourt
+    (235, 70, 190),   # bridge
+    (160, 160, 160),  # chimney
+    (120, 90, 220),   # dam
+    (255, 125, 0),    # Expressway-Service-area
+    (255, 185, 0),    # Expressway-toll-station
+    (80, 190, 80),    # golffield
+    (255, 145, 40),   # groundtrackfield
+    (120, 190, 70),   # harbor
+    (180, 95, 255),   # overpass
+    (0, 210, 120),    # ship
+    (255, 110, 160),  # stadium
+    (255, 200, 60),   # storagetank
+    (185, 80, 255),   # tenniscourt
+    (70, 130, 255),   # trainstation
+    (40, 150, 255),   # vehicle
+    (20, 190, 190),   # windmill
+]
+
+
 @dataclass
 class Predictor:
     name: str
@@ -55,6 +79,8 @@ def parse_args():
     parser.add_argument("--scan-limit", type=int, default=0, help="0 means scan all labeled images in the split.")
     parser.add_argument("--seed", type=int, default=19)
     parser.add_argument("--cell-size", type=int, default=210)
+    parser.add_argument("--font-scale", type=float, default=1.0)
+    parser.add_argument("--export-scale", type=float, default=1.0, help="Upscale the final figure for high-resolution export.")
     parser.add_argument("--conf", type=float, default=0.25)
     parser.add_argument("--public-conf", type=float, default=0.35)
     parser.add_argument("--imgsz", type=int, default=640)
@@ -139,7 +165,11 @@ def load_yolo_labels(image_path):
     return labels
 
 
+FONT_SCALE = 1.0
+
+
 def get_font(size=14):
+    size = max(1, round(size * FONT_SCALE))
     for name in ("arial.ttf", "DejaVuSans.ttf"):
         try:
             return ImageFont.truetype(name, size)
@@ -149,21 +179,7 @@ def get_font(size=14):
 
 
 def color_for_class(cls):
-    palette = [
-        (0, 170, 255),
-        (0, 210, 120),
-        (255, 185, 0),
-        (255, 80, 80),
-        (180, 95, 255),
-        (0, 200, 210),
-        (255, 125, 0),
-        (120, 190, 70),
-        (235, 70, 190),
-        (70, 130, 255),
-        (255, 110, 160),
-        (95, 185, 255),
-    ]
-    return palette[cls % len(palette)]
+    return CLASS_COLORS[cls % len(CLASS_COLORS)]
 
 
 def compact_name(name):
@@ -535,6 +551,8 @@ def build_predictors(args):
 
 def main():
     args = parse_args()
+    global FONT_SCALE
+    FONT_SCALE = args.font_scale
     root, data, names = read_data_yaml(args.data)
     images = list_images(root, data, args.split)
     predictors = build_predictors(args)
@@ -569,6 +587,13 @@ def main():
             cells[(r, c)] = draw_boxes(image, boxes, names, normalized=False, show_score=True)
 
     make_method_grid(row_names, cells, args.cell_size, args.out)
+    if args.export_scale and args.export_scale != 1.0:
+        image = Image.open(args.out)
+        scaled = image.resize(
+            (round(image.width * args.export_scale), round(image.height * args.export_scale)),
+            Image.Resampling.LANCZOS,
+        )
+        scaled.save(args.out)
     selected_path = args.out.with_suffix(".selected_images.txt")
     selected_path.write_text("\n".join(p.name for p in selected) + "\n", encoding="utf-8")
     print(f"Saved figure: {args.out}")
