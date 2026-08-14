@@ -86,6 +86,12 @@ def parse_args():
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--iou", type=float, default=0.5)
     parser.add_argument(
+        "--drop-cols",
+        nargs="*",
+        default=None,
+        help="Drop selected visualization columns by letter or 1-based index, e.g. --drop-cols d or --drop-cols 4.",
+    )
+    parser.add_argument(
         "--max-gt",
         type=int,
         default=12,
@@ -120,6 +126,29 @@ def parse_args():
         help="DIOR HARPNet weights. Default uses the best mAP50 checkpoint from DIOR evaluation.",
     )
     return parser.parse_args()
+
+
+def drop_selected_columns(selected, drop_cols):
+    if not drop_cols:
+        return selected
+    drop_indices = set()
+    for item in drop_cols:
+        value = str(item).strip().lower()
+        if not value:
+            continue
+        if value.isdigit():
+            idx = int(value) - 1
+        elif len(value) == 1 and "a" <= value <= "z":
+            idx = ord(value) - ord("a")
+        else:
+            raise ValueError(f"Unsupported column specifier: {item}. Use letters like d or 1-based numbers like 4.")
+        if idx < 0 or idx >= len(selected):
+            raise IndexError(f"Column {item} is out of range for {len(selected)} selected images.")
+        drop_indices.add(idx)
+    kept = [path for idx, path in enumerate(selected) if idx not in drop_indices]
+    dropped = [path.name for idx, path in enumerate(selected) if idx in drop_indices]
+    print(f"Dropped columns: {', '.join(dropped)}")
+    return kept
 
 
 def read_data_yaml(path):
@@ -574,6 +603,7 @@ def main():
         args.max_box_area,
         args.edge_margin,
     )
+    selected = drop_selected_columns(selected, args.drop_cols)
     if not selected:
         raise RuntimeError("No suitable images were selected.")
 
