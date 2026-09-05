@@ -40,21 +40,25 @@ def plot_distribution(root, out, title):
     ratios = [c / total * 100 for c in counts]
 
     labels = [name for name, _ in bins]
+    x = [0.0, 0.52, 1.04]
     colors = ["#2f80ed", "#8fc5ff", "#d7e9ff"]
 
     plt.rcParams.update(
         {
             "font.family": "Times New Roman",
-            "font.size": 13,
-            "axes.titlesize": 16,
-            "axes.labelsize": 14,
-            "xtick.labelsize": 12,
-            "ytick.labelsize": 12,
+            "font.size": 12,
+            "axes.titlesize": 14,
+            "axes.labelsize": 12,
+            "xtick.labelsize": 10,
+            "ytick.labelsize": 10,
         }
     )
 
-    fig, ax = plt.subplots(figsize=(6.2, 4.4), dpi=450)
-    bars = ax.bar(labels, ratios, color=colors, edgecolor="#1f2937", linewidth=1.0, width=0.58)
+    fig, ax = plt.subplots(figsize=(3.15, 4.4), dpi=450)
+    bars = ax.bar(x, ratios, color=colors, edgecolor="#1f2937", linewidth=1.0, width=0.22)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels)
+    ax.set_xlim(-0.22, 1.26)
     ax.set_ylim(0, max(ratios) + 13)
     ax.set_ylabel("Proportion of objects (%)")
     ax.set_xlabel("Object size range")
@@ -65,7 +69,7 @@ def plot_distribution(root, out, title):
     for bar, ratio, count in zip(bars, ratios, counts):
         x = bar.get_x() + bar.get_width() / 2
         y = bar.get_height()
-        ax.text(x, y + 1.2, f"{ratio:.1f}%\n({count})", va="bottom", ha="center", fontsize=11)
+        ax.text(x, y + 1.2, f"{ratio:.1f}%\n({count})", va="bottom", ha="center", fontsize=9)
 
     ax.text(
         0.98,
@@ -74,7 +78,7 @@ def plot_distribution(root, out, title):
         transform=ax.transAxes,
         ha="right",
         va="top",
-        fontsize=11,
+        fontsize=9,
         color="#374151",
     )
 
